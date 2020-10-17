@@ -11,8 +11,12 @@
 
     {{ if eq .Section "post" }}
     <span class="article-date">{{ .Date.Format "2006-01-02" }}</span>
+    
     {{ end }}
-
+    
+    {{ if eq .Section "post" }}
+    <span class="article-date" style="padding-left:20px">Yiwen Jiang & Yutong Jin</span>
+   {{ end }}
     <div class="article-content">
       {{ .Content }}
     </div>

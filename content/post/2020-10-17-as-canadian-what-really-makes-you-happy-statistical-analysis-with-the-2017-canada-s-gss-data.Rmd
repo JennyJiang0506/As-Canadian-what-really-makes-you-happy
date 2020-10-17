@@ -1,7 +1,7 @@
 ---
 title: As Canadian, what really makes you happy? Statistical analysis with the 2017
   Canada’s GSS Data
-author: Yiwen Jiang & Yutong Jin
+author: 'Yiwen Jiang & Yutong Jin'
 date: '2020-10-17'
 slug: as-canadian-what-really-makes-you-happy-statistical-analysis-with-the-2017-canada-s-gss-data
 categories: []

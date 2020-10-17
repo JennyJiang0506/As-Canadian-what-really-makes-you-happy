@@ -1,0 +1,267 @@
+---
+title: As Canadian, what really makes you happy? Statistical analysis with the 2017
+  Canada’s GSS Data
+author: Yiwen Jiang & Yutong Jin
+date: '2020-10-17'
+slug: as-canadian-what-really-makes-you-happy-statistical-analysis-with-the-2017-canada-s-gss-data
+categories: []
+tags: []
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Abstract
+This paper utilizes the 2017 General Social Survey as a backup for the finding in relationship between people's well-being and wealthiness, in general speaking, personal and family income, type of work, dwelling, education, health, etc. We find some strong evidences shows that the family income, marital status, education, and self rated health affects people's well-being. By contrast personal income and occupation are less significant. The significant variables can be used to build linear regression model on well-being score. Depending on how we quantify and define happiness, building a binary classifier is also appropriate with these variables.
+
+# Introduction
+Does wealthiness and being healthy makes us thinking we are living in a better life? This is a debatable question that can be answered in many ways. The emotional well-being of an individual's everyday routine - experiences of happiness, sadness, stress, and anger can vary from person to person. And it is very difficult to quantify and determine one's degree of happiness in life. However it becomes easier for people to answer when the question is well-formulated. For example, "on a scale of 0 to 10, how happy are you now?", "if 0 means feeling not satisfied at all, and 10 means feeling satisfied the most, which number represents your feeling?". This is also what we observed in the GSS(General Social Survey) dataset - very few respondent has skipped this question. Therefore we raise the question of whether money buys happiness by studying the relationships between this well-being score and respondents' wealthiness in general speaking. We would like to answer, in the conclusion of this statistical analysis, several questions: Can one's happiness be explained by the type of education received, whether owning the residential property, the amount of money made as income, and health condition? More specifically, can we perform some analysis and draw a conclusion on the correlation between the level of well-being and general wealthiness for the population as a whole? or there's some kind of groups that classify this relationship? since one would easily argue that someone with higher professional reward and status quo might be more difficult to be satisfied with his/her life.
+Many literatures have discussed this topic in detail with statistical analysis as backup. For example, [@r1] states that there seems to be a correlation between the level of income and job and life satisfaction while admitting that there are differences between groups. [@r2] showed that there is a positive slight correlation between income and happiness by carrying out an hypothesis testing. [@r3] showed estimates using a regression model that marriage brings approximately the same amount of happiness, on average, as having extra £70,000 of annual income. Physical health is one of the most important variables explaining humain well-being. However, none of the literatures we went through has expanded the technical details and the goodness of fit of the models they've presented. We therefore proceed our study aiming to provding an approriate model to predict the well-being score from the information we've collected from the survey, and access technically the model we've built.
+
+
+# Data
+```{r, echo=FALSE,message=FALSE,warning = FALSE}
+library(dplyr)
+library(ggplot2)
+library(nnet)
+library(caTools)
+library(pROC)
+library(gridExtra)
+library(reshape2)
+
+gss <- read.csv("gss.csv")
+vars <- c(
+  "age",
+  "sex",
+  "feelings_life",
+  "marital_status",
+  "education",
+  "average_hours_worked",
+  "self_rated_health",
+  "self_rated_mental_health",
+  "income_respondent",
+  "income_family",
+  "occupation"
+)
+gss <- gss[vars]
+gss <- gss[complete.cases(gss),]
+gss$feelings_life <- as.factor(gss$feelings_life)
+```
+
+The Canada's General Social Survey program was designed as a series of independent, annual, voluntary, cross-sectional surveys. The goal of gathering this survey data is to collect social trends to monitor changes in the living condition and well-being of Canadian people and to provid some building block for researcher to study the social behivour and pattern within Canada's national statistical systems [@r4]. We specifically picked the data on 2017 as it is most accessible at the moment for us and we believe the pattern is preserved in the GSS dataset regardless of the year of which the survey has been conducted.
+
+The first variable we are going to look at is "feelings_life". It is an integer value between 0 and 10 represents how respondent's feeling about life as a whole. Below is the bar plot of this variable across the whole dataset. We noticed that most people have chose the answer of 7, 8, 9, or 10. Very few respondent acknowledged their dissatisfaction of their life. This number represents respondent general feeling about their life and it is the only direct measure of respondent's happiness we have in the dataset. In the following sections, we sometimes refer to this variable as "well-being score".
+
+```{r, echo=FALSE,fig.width=5, fig.height=3.5, fig.align='center'}
+ggplot(gss, aes(x = feelings_life)) + geom_bar() + labs(x = "Well-being score", y="Number of sample")
+
+```
+
+We secondly look at the density plot of variable "age" against the well-being score. There isn't any glaring relationship between this two variable except that the proportion of the middle aged (around 45) people is larger among respondents who have answered "0" as well-being score than the other groups. If we separate the samples by well-being score at 8, and define two groups of samples. "Happy" respondents answered the question with a score higher than 8, and respondents that are "not happy" with their lives have answer with a number below or equal to 8. We will explain the choice of 8 as separation in later section. Interestingly, we found out that more older respondents seem to think they are happy with there lives, and more younger respondents are not satisfied with their lives.
+
+
+```{r, echo=FALSE,fig.width=5, fig.height=4, fig.align='center'}
+plot1 <- ggplot(gss, aes(x = age, color = feelings_life)) + geom_density() + labs(x = "", y="Density")
+
+gss$happy <- as.numeric(gss$feelings_life) > 8
+#table(gss$happy)
+plot2 <- ggplot(gss, aes(x = age, color = happy)) + geom_density() + labs(x = "Age", y="Density") 
+grid.arrange(plot1, plot2, nrow = 2)
+```
+
+Again with a bar plot on the well-being score but this time plotting against the self assessment on health. Due to the difference in sample sizes by "feeling_life", there isn't much to comment on the relationship between these two variables. However, as we compute the ratio of people of different self rated health score and plot the ratio on the well-being score. It is not difficult to detect the pattern that there is a positive correlation between the well-being score and the ratio of people thinking they are in "Excellent" or "Very good" health. There's clearly also a negative correlation between the ratio of "Fair" or "Poor" health condition.
+
+```{r, echo=FALSE,message=FALSE,warning = FALSE,fig.width=5, fig.height=3, fig.align='center'}
+ggplot(gss, aes(x = feelings_life)) + geom_bar(aes(fill = self_rated_health)) + labs(x = "Well-being score", y="Number of sample") + scale_fill_discrete(name = "Self rated health")
+
+
+df <-
+  as.data.frame.matrix(table(gss$feelings_life, gss$self_rated_health))
+df <- df / rowSums(df)
+df$feelings_life <- row.names(df)
+df$feelings_life <- as.numeric(df$feelings_life)
+df <- melt(df, id.vars = "feelings_life")
+ggplot(df, aes(feelings_life, value)) +
+  geom_point() +      stat_smooth() +     facet_wrap( ~ variable) + labs(x = "Well-being score")
+```
+
+Performing the same analysis on the "education" variable, we observe that the pattern is less obvious. We can comment on the positive correlation between ratio of people obtained Bachelor's degree and well-being score, or the fact that there's a slight negative correlation between the well-being and the ratio of people obtained high school equivalent diploma as highest degree received.
+
+```{r,  echo=FALSE,message=FALSE,warning = FALSE,fig.width=5, fig.height=4, fig.align='center'}
+ggplot(gss, aes(x = feelings_life)) + geom_bar(aes(fill = education))  + theme(legend.position =c(0.3, 0.8)) + labs(x = "Well-being score", y="Number of sample")+ guides(col = guide_legend(nrow = 8))
+
+df <-
+  as.data.frame.matrix(table(gss$feelings_life, gss$education))
+df <- df / rowSums(df)
+df$feelings_life <- row.names(df)
+df$feelings_life <- as.numeric(df$feelings_life)
+df <- melt(df, id.vars = "feelings_life")
+ggplot(df, aes(feelings_life, value)) +
+  geom_point() +      stat_smooth() +     facet_wrap(~ variable) + labs(x = "Well-being score")
+```
+
+The next variable of interest is "marital_status". A simple point plot of marital status on well-being score using the number of sample on the same coordinate as the point size, it is also straightforward to deduce that married couples, or single individuals are merrier. People who divorced or widowed are less likely to be happy with their lives.
+```{r, echo=FALSE,fig.width=5, fig.height=3.5, fig.align='center'}
+gss_edu <- count(gss, marital_status, feelings_life,sex)
+ggplot(gss_edu, aes(x = marital_status, y = feelings_life, color=sex, size = n)) + geom_point(shape = 1)  +
+  theme(axis.text.x = element_text(angle=-45, hjust=0))  + labs(x = "Martital status", y="Well-being score")
+```
+
+
+We noticed that the income variables (both family and respondent) are categorical variables in our dataset. But income really should be a continues variable instead. Otherwise, the categorical income will hide the pattern in numbers. To overcome this issue, we adpoted the income data processing logic in [@r5] - only those who claimed employment or self-employment income as the main source of income were retained. The mid-point values of each category for personal income are divided by the annual number of hours worked (i.e., weeks worked multiplied by hours per week) to arrive at the hourly wage variable. We've omitted the part that deflating the income rate by consumer price index as we are only looking at one year data. We can get a sense of how income affect the well-being score from the second plot - high density around lower income in the "not happy" group, and high density around higher income in the "happy" group.
+
+```{r, echo=FALSE,warning = FALSE,fig.width=5, fig.height=5, fig.align='center'}
+gss <- filter(gss, age <= 64 & age >= 18)
+
+
+gss <-
+  gss %>% mutate(
+    average_hours_worked_cts = case_when(
+      average_hours_worked == "30.0 to 40.0 hours" ~ 35.0,
+      average_hours_worked == "50.1 hours and more" ~ 60.0,
+      average_hours_worked == "40.1 to 50.0 hours" ~ 45.0,
+      average_hours_worked == "0.1 to 29.9 hours" ~ 15.0,
+      average_hours_worked == "0 hour" ~ 0.0,
+      average_hours_worked == "Don't know" ~ 0.0
+    )
+  )
+gss <- gss[gss$average_hours_worked_cts > 0, ]
+
+gss <-
+  gss %>% mutate(
+    income_family_cts = case_when(
+      income_family == "$100,000 to $ 124,999" ~ 112500.0,
+      income_family == "$125,000 and more" ~ 140000.0,
+      income_family == "$25,000 to $49,999" ~ 37500.0,
+      income_family == "$50,000 to $74,999" ~ 62500.0,
+      income_family == "$75,000 to $99,999" ~ 87500.0,
+      income_family == "Less than $25,000" ~ 12500.0
+    )
+  )
+
+gss <-
+  gss %>% mutate(
+    income_respondent_rate_cts = case_when(
+      income_respondent == "$100,000 to $ 124,999" ~ 112500.0,
+      income_respondent == "$125,000 and more" ~ 140000.0,
+      income_respondent == "$25,000 to $49,999" ~ 37500.0,
+      income_respondent == "$50,000 to $74,999" ~ 62500.0,
+      income_respondent == "$75,000 to $99,999" ~ 87500.0,
+      income_respondent == "Less than $25,000" ~ 12500.0
+    )
+  )
+
+gss$income_respondent_rate_cts<-gss$income_respondent_rate_cts/gss$average_hours_worked_cts/52
+
+plot1 <- ggplot(gss, aes(x=income_respondent_rate_cts, color=feelings_life))+geom_density()  + labs(x = "", y="Density")
+
+gss$happy <- as.numeric(gss$feelings_life) > 8
+#table(gss$happy)
+plot2 <- ggplot(gss, aes(x=income_respondent_rate_cts, color=happy))+geom_density()+ labs(x = "Respondent income rate ($/h)", y="Density")
+grid.arrange(plot1, plot2, nrow = 2)
+
+```
+
+
+
+# Model
+
+We've done some data explorations on the selected variables. It seems some of the variables are either positively or negatively correlated with the well-being score. Naturally we will proceed with fitting a simple linear regression model of well-being score on all of the selected variables and access the significant variables. Base on the summary of the first linear model, we can choose to keep or drop a subset of the variables in order to build a simpler but more robust regression model. Dropping necessary variables will help to avoid overfitting of the dataset.
+
+The second model we created is a classification model. We would like to class respondent into 2 classes, happy and not happy. We've deliberately chose the separation score to be 8 because we'd like to make an assumption on happiness while keeping the balance of the samples within each group. This is also logical since the probability for a person to be happy and not happy should be close to 50-50 without any external interference. We also avoid building a classification model with mutli-class for 2 obvious reasons. Firstly the well-being score does have information embed in it, although it is represented at first a categorical value. We need to express this information by converting it to numerical value. This is also the reason why our first linear model well performed. Secondly it is hard to keep the samples in each class balanced if we choose to classify our dataset using well-being score.
+
+
+# Results
+From the summary on our first linear regression model, it is obvious that martial status, education, and self rated health are significant variables. Interestingly, after spending some effort to transform respondent's personal income from categorical data to continuous numerical data, the linear model suggests it is not a significant variable. The income of family is however important. Last but not least, the occupation doesn't tell much on respondents' well-being. Fitting the linear model again excluding the insignificant variables. We obtain a model with 0.3122 as adjusted R-square and a very low p-value: 2.2e-16 which suggests the linear model is a decent one to fit our dataset. The QQplot and residuals below also confirms our finding on the goodness of fit of the first linear model. 
+```{r, echo=FALSE,fig.width=5, fig.height=3.5, fig.align='center'}
+gss <-
+  gss %>% mutate(
+    feelings_life = case_when(
+      feelings_life == "10" ~ 10.,
+      feelings_life == "9" ~ 9.,
+      feelings_life == "8" ~ 8.0,
+      feelings_life == "7" ~ 7.0,
+      feelings_life == "6" ~ 6.0,
+      feelings_life == "5" ~ 5.0,
+      feelings_life == "4" ~ 4.0,
+      feelings_life == "3" ~ 3.0,
+      feelings_life == "2" ~ 2.0,
+      feelings_life == "1" ~ 1.0,
+      feelings_life == "0" ~ 0.0
+    )
+  )
+gss$feelings_life <- as.numeric(gss$feelings_life)
+vars<-c("age",
+        "sex",
+        "feelings_life",
+        "marital_status",
+        "education",
+        "self_rated_health",
+        "self_rated_mental_health",
+        "income_respondent_rate_cts",
+        "income_family_cts",
+        "occupation")
+gss_lm <- gss[vars]
+model.lm <- lm(feelings_life~., data=gss_lm)
+#summary(model.lm)
+
+model.lm <- lm(feelings_life~sex+marital_status+education+self_rated_health+income_family_cts, data=gss_lm)
+#summary(model.lm)
+par(mfrow=c(2,2))
+plot(model.lm)
+
+```
+
+We've carried out a binary logistic regression on our dataset with necessary 2-fold cross-validation. The model gives us 76.8% training data prediction accuracy and 77.3% test data prediction accuracy. From the ROC plot below, we observed that the model has high sensitivity and specificity simultaneously. This mean our binary classification model is with high discrimination ability to predict the happiness class for a data point draw from the population.
+
+```{r, echo=FALSE,warning = FALSE,message=FALSE,fig.width=5, fig.height=3.5, fig.align='center'}
+vars <- c(
+  "sex",
+  "marital_status",
+  "education",
+  "self_rated_health",
+  "self_rated_mental_health",
+  "income_family_cts",
+  "happy"
+)
+gss_glm <- gss[vars]
+u <- mean(gss_glm$income_family_cts)
+s <- sd(gss_glm$income_family_cts)
+gss_glm$income_family_cts <- (gss_glm$income_family_cts - u) / s
+
+set.seed(99)
+sample = sample.split(gss_glm, SplitRatio = 0.7)
+gss_glm_fit = subset(gss_glm, sample == TRUE)
+gss_glm_test = subset(gss_glm, sample == FALSE)
+
+model.glm <- glm(happy ~ ., data = gss_glm_fit, family = binomial)
+model.glm.fit <-
+  ((predict(model.glm, gss_glm_fit, type = "response") > 0.5) == gss_glm_fit$happy)
+training_acc <- sum(model.glm.fit) / length(model.glm.fit)
+
+model.glm.test <-
+  ((predict(model.glm, gss_glm_test, type = "response") > 0.5) == gss_glm_test$happy)
+test_acc <- sum(model.glm.test) / length(model.glm.test)
+
+glm_test_pred <-
+  predict(model.glm, newdata = gss_glm_test, type = "response")
+g <-
+  roc(gss_glm_test$happy ~ glm_test_pred,
+      plot = TRUE,
+      print.auc = TRUE)
+```
+
+# Discussion
+We've built and access two types of regression model. The first linear regression model performed well when identifying the significant variables that affect respondent's well being. It gives a good approximation to the well-being score that we collected from the GSS survey. However, due to the model's simplicity, our linear regression model is likely to underfit the dataset and it is very sensitive to data outliers. We've done some data cleaning to exclude the outliers in data preparation phase. However outliers always exist in such large amount of data points. Moreover, linear regression assumes that the data is independent which isn't perfectly true giving that the dataset has been collected in form of survey. There's always correlations to some extends between similar questions. We've selected the variables that seems to be independent, but it could be an improvement for us to perform some test on the multicollinearity before actually fitting the model. The disadvantage of our second model is obvious - we had to select a separation score for the binary classification. The model also assumes data being independently observed and it is sensitive to the ratio between size of the sample groups. Generally, the sizes of group need to be balanced. This drawback however can be mitgated to some degree by applying regularization. Hence a future enhancement of the model could be adding regularization to our second model.
+
+# References
+
+
+
+Andrew E. Clark, Andrew J. Oswald. 2002. “A Simple Statistical Method for Measuring How Life Events Aect Happiness.” http://wrap.warwick.ac.uk/343/1/WRAP_oswald_ijeclarkos.pdf.
+“General Social Survey: An Overview, 2019.” 2019. https://www150.statcan.gc.ca/n1/pub/89f0115x/ 89f0115x2019001-eng.htm.
+Maslowski, Marcin. 2016. “Does Money Bring Happiness? A Statistical Study Providing Convincing Evidence of Stated Hypothesis.” https://rpubs.com/semei/happandincomestudy.
+Mueller, Richard E. 2010. “Wage Dierentials of Males and Females in Same-Sex and Dierent-Sex Couples in Canada,” https://journals.library.ualberta.ca/csp/index.php/csp/article/view/18545/17717.
+Walker, David. 2010. “Income and Happiness.” https://www.cedu.niu.edu/~walker/statistics/K- 12%20Simple%20Linear%20Regression.pdf.
+
+
